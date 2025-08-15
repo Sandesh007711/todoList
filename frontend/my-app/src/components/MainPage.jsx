@@ -2,17 +2,30 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
 function MainPage() {
+  const [userInfo, setUserInfo] = useState({ name: '', email: '' });
   const [todos, setTodos] = useState([]);
   const [newTodo, setNewTodo] = useState('');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const sidebarRef = useRef(null);
+  const menuButtonRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    fetchUserInfo();
+    fetchTodos();
+  }, []);
+
+  useEffect(() => {
     function handleClickOutside(event) {
-      if (sidebarRef.current && !sidebarRef.current.contains(event.target) && isSidebarOpen) {
+      if (
+        sidebarRef.current && 
+        !sidebarRef.current.contains(event.target) && 
+        menuButtonRef.current && 
+        !menuButtonRef.current.contains(event.target) && 
+        isSidebarOpen
+      ) {
         setSidebarOpen(false);
       }
     }
@@ -23,8 +36,131 @@ function MainPage() {
     };
   }, [isSidebarOpen]);
 
+  const fetchUserInfo = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/');
+        return;
+      }
+
+      const response = await fetch('http://localhost:5000/api/users/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          navigate('/');
+          return;
+        }
+        throw new Error('Failed to fetch user info');
+      }
+
+      const data = await response.json();
+      // Update to use the nested user object from response
+      setUserInfo({
+        name: data.user.name,
+        email: data.user.email
+      });
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  };
+
+  const fetchTodos = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/');
+        return;
+      }
+
+      const response = await fetch('http://localhost:5000/api/todos', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          navigate('/');
+          return;
+        }
+        throw new Error('Failed to fetch todos');
+      }
+
+      const data = await response.json();
+      setTodos(data);
+    } catch (error) {
+      console.error('Error fetching todos:', error);
+    }
+  };
+
+  const addTodo = async (e) => {
+    e.preventDefault();
+    if (!newTodo.trim()) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/');
+        return;
+      }
+
+      const response = await fetch('http://localhost:5000/api/todos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ text: newTodo })
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          navigate('/');
+          return;
+        }
+        throw new Error('Failed to create todo');
+      }
+
+      const data = await response.json();
+      setTodos([...todos, data]);
+      setNewTodo('');
+    } catch (error) {
+      console.error('Error adding todo:', error);
+    }
+  };
+
+  const toggleTodo = (id) => {
+    setTodos(todos.map(todo => 
+      todo._id === id ? { ...todo, completed: !todo.completed } : todo
+    ));
+  };
+
+  const handleDelete = (id) => {
+    setTodos(todos.filter((todo) => todo._id !== id));
+  };
+
+  const startEditing = (todo) => {
+    setEditingId(todo._id);
+    setEditText(todo.text);
+  };
+
+  const handleUpdate = (id) => {
+    if (editText.trim()) {
+      setTodos(todos.map(todo =>
+        todo._id === id ? { ...todo, text: editText } : todo
+      ));
+      setEditingId(null);
+      setEditText('');
+    }
+  };
+
   const handleLogout = () => {
-    // Add logout logic here
+    localStorage.removeItem('token');
     navigate('/');
   };
 
@@ -39,39 +175,6 @@ function MainPage() {
     }, {});
   };
 
-  const addTodo = (e) => {
-    e.preventDefault();
-    if (newTodo.trim()) {
-      setTodos([...todos, { id: Date.now(), text: newTodo, completed: false }]);
-      setNewTodo('');
-    }
-  };
-
-  const toggleTodo = (id) => {
-    setTodos(todos.map(todo => 
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
-    ));
-  };
-
-  const handleDelete = (id) => {
-    setTodos(todos.filter(todo => todo.id !== id));
-  };
-
-  const startEditing = (todo) => {
-    setEditingId(todo.id);
-    setEditText(todo.text);
-  };
-
-  const handleUpdate = (id) => {
-    if (editText.trim()) {
-      setTodos(todos.map(todo =>
-        todo.id === id ? { ...todo, text: editText } : todo
-      ));
-      setEditingId(null);
-      setEditText('');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex">
       {/* Sidebar */}
@@ -82,11 +185,13 @@ function MainPage() {
             <div className="space-y-4">
               <div className="flex items-center space-x-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
                 <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg">
-                  <span className="text-white font-bold text-lg">U</span>
+                  <span className="text-white font-bold text-lg">
+                    {userInfo.name ? userInfo.name[0].toUpperCase() : 'U'}
+                  </span>
                 </div>
                 <div>
-                  <p className="font-medium text-gray-800">User Name</p>
-                  <p className="text-sm text-gray-500">user@example.com</p>
+                  <p className="font-medium text-gray-800">{userInfo.name || 'Loading...'}</p>
+                  <p className="text-sm text-gray-500">{userInfo.email || 'Loading...'}</p>
                 </div>
               </div>
               <button
@@ -105,8 +210,8 @@ function MainPage() {
               </h2>
             </Link>
             <div className="space-y-2">
-              {Object.entries(getCompletionStats()).slice(0, 3).map(([date, count]) => (
-                <div key={date} className="flex justify-between items-center">
+              {Object.entries(getCompletionStats()).slice(0, 3).map(([date, count], index) => (
+                <div key={`${date}-${index}`} className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">{date}</span>
                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
                     {count} completed
@@ -130,6 +235,7 @@ function MainPage() {
           {/* Top section with menu and title */}
           <div className="flex items-center mb-8 relative">
             <button
+              ref={menuButtonRef}
               onClick={() => setSidebarOpen(!isSidebarOpen)}
               className="p-3 rounded-lg hover:bg-white/50 transition-colors duration-200 shadow-sm hover:shadow-md"
             >
@@ -178,12 +284,12 @@ function MainPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {todos.map(todo => (
-                  <tr key={todo.id} className="hover:bg-blue-50/50 transition-colors duration-150">
+                  <tr key={todo._id} className="hover:bg-blue-50/50 transition-colors duration-150">
                     <td className="px-6 py-4">
                       <input
                         type="checkbox"
                         checked={todo.completed}
-                        onChange={() => toggleTodo(todo.id)}
+                        onChange={() => toggleTodo(todo._id)}
                         className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-md transition-colors duration-150"
                       />
                     </td>
@@ -247,7 +353,7 @@ function MainPage() {
                   </tr>
                 ))}
                 {todos.length === 0 && (
-                  <tr>
+                  <tr key="empty-row" className="hover:bg-blue-50/50">
                     <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
                       <p className="text-lg">No todos yet. Add one above! ✨</p>
                     </td>

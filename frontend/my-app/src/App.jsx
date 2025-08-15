@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './components/Login';
 import MainPage from './components/MainPage';
 import CompletionHistory from './components/CompletionHistory';
+import SignUp from './components/SignUp';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -40,6 +41,7 @@ function App() {
             )
           } 
         />
+        <Route path="/signup" element={<SignUp />} />
       </Routes>
     </Router>
   );

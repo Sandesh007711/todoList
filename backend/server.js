@@ -13,7 +13,7 @@ const app = express();
 
 // Detailed CORS configuration
 app.use(cors({
-    origin: 'http://localhost:3000', // Replace with your frontend URL
+    origin: 'http://localhost:5173', // Replace with your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -76,6 +76,17 @@ app.post('/api/users/login', async (req, res) => {
         res.json({ user, token });
     } catch (error) {
         res.status(400).json({ message: error.message });
+    }
+});
+
+// User Logout
+app.post('/api/users/logout', auth, async (req, res) => {
+    try {
+        // You could add token to a blacklist here if implementing full token invalidation
+        // For now, we'll just send a success response
+        res.json({ message: 'Logged out successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error during logout' });
     }
 });
 
@@ -185,6 +196,39 @@ app.get('/api/todos/history/byDate', auth, async (req, res) => {
         res.json(completionHistory);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+});
+
+// Get Current User Profile
+app.get('/api/users/me', auth, async (req, res) => {
+    try {
+        // Get user without password
+        const user = await User.findById(req.user._id)
+            .select('-password');
+
+        // Get user statistics
+        const stats = await Todo.aggregate([
+            { $match: { user: req.user._id } },
+            {
+                $group: {
+                    _id: null,
+                    totalTodos: { $sum: 1 },
+                    completedTodos: {
+                        $sum: { $cond: [{ $eq: ["$completed", true] }, 1, 0] }
+                    },
+                    pendingTodos: {
+                        $sum: { $cond: [{ $eq: ["$completed", false] }, 1, 0] }
+                    }
+                }
+            }
+        ]);
+
+        res.json({
+            user,
+            stats: stats[0] || { totalTodos: 0, completedTodos: 0, pendingTodos: 0 }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching user profile' });
     }
 });
 
