@@ -123,17 +123,28 @@ function MainPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ completed: !todo.completed })
+        body: JSON.stringify({ 
+          completed: !todo.completed,
+          completedAt: !todo.completed ? new Date().toISOString() : null
+        })
       });
 
       if (response.ok) {
+        const updatedTodo = await response.json();
         setTodos(todos.map(todo => 
-          todo._id === id ? { ...todo, completed: !todo.completed } : todo
+          todo._id === id ? updatedTodo : todo
         ));
+      } else {
+        throw new Error('Failed to update todo');
       }
     } catch (error) {
       console.error('Error updating todo:', error);
     }
+  };
+
+  const startEditing = (todo) => {
+    setEditingId(todo._id);
+    setEditText(todo.text);
   };
 
   const handleUpdate = async (id) => {
@@ -141,24 +152,33 @@ function MainPage() {
 
     try {
       const token = localStorage.getItem('token');
+      const todo = todos.find(t => t._id === id);
+      
       const response = await fetch(`http://localhost:5000/api/todos/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ text: editText })
+        body: JSON.stringify({
+          text: editText,
+          completed: todo.completed // Preserve the completed status
+        })
       });
 
-      if (response.ok) {
-        setTodos(todos.map(todo =>
-          todo._id === id ? { ...todo, text: editText } : todo
-        ));
-        setEditingId(null);
-        setEditText('');
+      if (!response.ok) {
+        throw new Error('Failed to update todo');
       }
+
+      const updatedTodo = await response.json();
+      setTodos(prevTodos => prevTodos.map(t => 
+        t._id === id ? updatedTodo : t
+      ));
+      setEditingId(null);
+      setEditText('');
     } catch (error) {
       console.error('Error updating todo:', error);
+      // Optionally show error to user
     }
   };
 
@@ -172,9 +192,12 @@ function MainPage() {
         }
       });
 
-      if (response.ok) {
-        setTodos(todos.filter(todo => todo._id !== id));
+      if (!response.ok) {
+        throw new Error('Failed to delete todo');
       }
+
+      // Remove the todo from state after successful deletion
+      setTodos(prevTodos => prevTodos.filter(todo => todo._id !== id));
     } catch (error) {
       console.error('Error deleting todo:', error);
     }
@@ -356,14 +379,23 @@ function MainPage() {
                         <>
                           <button
                             onClick={() => handleUpdate(todo._id)}
-                            className="px-3 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors duration-150"
+                            className="px-3 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors duration-150 flex items-center"
                           >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
                             Save
                           </button>
                           <button
-                            onClick={() => setEditingId(null)}
-                            className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors duration-150"
+                            onClick={() => {
+                              setEditingId(null);
+                              setEditText('');
+                            }}
+                            className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors duration-150 flex items-center"
                           >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
                             Cancel
                           </button>
                         </>
@@ -371,8 +403,11 @@ function MainPage() {
                         <>
                           <button
                             onClick={() => startEditing(todo)}
-                            className="px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors duration-150"
+                            className="px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors duration-150 flex items-center"
                           >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
                             Edit
                           </button>
                           <button
