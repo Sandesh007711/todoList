@@ -6,8 +6,23 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   base: '/',
   server: {
-    port:5173 ,
-    open: true,
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        changeOrigin: true,
+        secure: process.env.NODE_ENV === 'production'
+      }
+    }
+  },
+  build: {
+    sourcemap: process.env.NODE_ENV !== 'production',
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: process.env.NODE_ENV === 'production'
+      }
+    }
   },
   css: {
   },

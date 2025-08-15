@@ -1,6 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const compression = require('compression');
+const config = require('./config/config');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
@@ -11,9 +15,20 @@ const auth = require('./middleware/auth');
 
 const app = express();
 
-// Detailed CORS configuration
+// Security middleware
+app.use(helmet());
+app.use(compression());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use('/api/', limiter);
+
+// CORS configuration
 app.use(cors({
-    origin: 'http://localhost:5173', // Replace with your frontend URL
+    origin: 'http://localhost:5173', // Temporarily hardcode for development
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -45,9 +60,19 @@ app.get('/api/test', (req, res) => {
 });
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB Atlas'))
-    .catch(err => console.error('MongoDB connection error:', err));
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000
+}).then(() => {
+    console.log('Connected to MongoDB');
+    app.listen(process.env.PORT || 5000, () => {
+        console.log(`Server running on port ${process.env.PORT || 5000}`);
+    });
+}).catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+});
 
 // User Registration
 app.post('/api/users/register', async (req, res) => {
@@ -232,21 +257,11 @@ app.get('/api/users/me', auth, async (req, res) => {
     }
 });
 
-// Update error handling middleware
+// Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Error:', err);
-    res.status(500).json({
-        message: 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    res.status(err.status || 500).json({
+        message: config.nodeEnv === 'production' ? 'Something went wrong' : err.message,
+        stack: config.nodeEnv === 'development' ? err.stack : undefined
 });
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-    console.log('Available endpoints:');
-    console.log('- GET    /api/todos');
-    console.log('- POST   /api/todos');
-    console.log('- PUT    /api/todos/:id');
-    console.log('- DELETE /api/todos/:id');
 });

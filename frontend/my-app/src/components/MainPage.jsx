@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ApiService from '../services/api';
 
 function MainPage() {
   const { logout } = useAuth();
@@ -10,35 +11,19 @@ function MainPage() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const sidebarRef = useRef(null);
   const menuButtonRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchData = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/', { replace: true });
-        return;
-      }
-
+    const loadData = async () => {
       try {
-        const [userResponse, todosResponse] = await Promise.all([
-          fetch('http://localhost:5000/api/users/me', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          }),
-          fetch('http://localhost:5000/api/todos', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          })
-        ]);
-
-        if (!userResponse.ok || !todosResponse.ok) {
-          throw new Error('Failed to fetch data');
-        }
-
+        setIsLoading(true);
         const [userData, todosData] = await Promise.all([
-          userResponse.json(),
-          todosResponse.json()
+          ApiService.getUserInfo(),
+          ApiService.getTodos()
         ]);
 
         setUserInfo({
@@ -47,14 +32,17 @@ function MainPage() {
         });
         setTodos(todosData);
       } catch (error) {
-        console.error('Error:', error);
-        localStorage.removeItem('token');
-        navigate('/', { replace: true });
+        setError(error.message);
+        if (error.message.includes('authentication')) {
+          logout();
+        }
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchData();
-  }, []); // Remove navigate from dependencies
+    loadData();
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -80,30 +68,7 @@ function MainPage() {
     if (!newTodo.trim()) return;
 
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/');
-        return;
-      }
-
-      const response = await fetch('http://localhost:5000/api/todos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ text: newTodo })
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          navigate('/');
-          return;
-        }
-        throw new Error('Failed to create todo');
-      }
-
-      const data = await response.json();
+      const data = await ApiService.createTodo(newTodo);
       setTodos([...todos, data]);
       setNewTodo('');
     } catch (error) {
@@ -231,6 +196,30 @@ function MainPage() {
       return acc;
     }, {});
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center p-8">
+          <h1 className="text-xl text-red-600 mb-4">{error}</h1>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex">
