@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 function MainPage() {
+  const { logout } = useAuth();
   const [userInfo, setUserInfo] = useState({ name: '', email: '' });
   const [todos, setTodos] = useState([]);
   const [newTodo, setNewTodo] = useState('');
@@ -13,9 +15,46 @@ function MainPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchUserInfo();
-    fetchTodos();
-  }, []);
+    const fetchData = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/', { replace: true });
+        return;
+      }
+
+      try {
+        const [userResponse, todosResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/users/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch('http://localhost:5000/api/todos', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+        ]);
+
+        if (!userResponse.ok || !todosResponse.ok) {
+          throw new Error('Failed to fetch data');
+        }
+
+        const [userData, todosData] = await Promise.all([
+          userResponse.json(),
+          todosResponse.json()
+        ]);
+
+        setUserInfo({
+          name: userData.user.name,
+          email: userData.user.email
+        });
+        setTodos(todosData);
+      } catch (error) {
+        console.error('Error:', error);
+        localStorage.removeItem('token');
+        navigate('/', { replace: true });
+      }
+    };
+
+    fetchData();
+  }, []); // Remove navigate from dependencies
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -35,68 +74,6 @@ function MainPage() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isSidebarOpen]);
-
-  const fetchUserInfo = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/');
-        return;
-      }
-
-      const response = await fetch('http://localhost:5000/api/users/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          navigate('/');
-          return;
-        }
-        throw new Error('Failed to fetch user info');
-      }
-
-      const data = await response.json();
-      // Update to use the nested user object from response
-      setUserInfo({
-        name: data.user.name,
-        email: data.user.email
-      });
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-    }
-  };
-
-  const fetchTodos = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/');
-        return;
-      }
-
-      const response = await fetch('http://localhost:5000/api/todos', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          navigate('/');
-          return;
-        }
-        throw new Error('Failed to fetch todos');
-      }
-
-      const data = await response.json();
-      setTodos(data);
-    } catch (error) {
-      console.error('Error fetching todos:', error);
-    }
-  };
 
   const addTodo = async (e) => {
     e.preventDefault();
@@ -134,34 +111,91 @@ function MainPage() {
     }
   };
 
-  const toggleTodo = (id) => {
-    setTodos(todos.map(todo => 
-      todo._id === id ? { ...todo, completed: !todo.completed } : todo
-    ));
-  };
+  // Update todo functions
+  const toggleTodo = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      const todo = todos.find(t => t._id === id);
+      
+      const response = await fetch(`http://localhost:5000/api/todos/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ completed: !todo.completed })
+      });
 
-  const handleDelete = (id) => {
-    setTodos(todos.filter((todo) => todo._id !== id));
-  };
-
-  const startEditing = (todo) => {
-    setEditingId(todo._id);
-    setEditText(todo.text);
-  };
-
-  const handleUpdate = (id) => {
-    if (editText.trim()) {
-      setTodos(todos.map(todo =>
-        todo._id === id ? { ...todo, text: editText } : todo
-      ));
-      setEditingId(null);
-      setEditText('');
+      if (response.ok) {
+        setTodos(todos.map(todo => 
+          todo._id === id ? { ...todo, completed: !todo.completed } : todo
+        ));
+      }
+    } catch (error) {
+      console.error('Error updating todo:', error);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/');
+  const handleUpdate = async (id) => {
+    if (!editText.trim()) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/todos/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ text: editText })
+      });
+
+      if (response.ok) {
+        setTodos(todos.map(todo =>
+          todo._id === id ? { ...todo, text: editText } : todo
+        ));
+        setEditingId(null);
+        setEditText('');
+      }
+    } catch (error) {
+      console.error('Error updating todo:', error);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/todos/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        setTodos(todos.filter(todo => todo._id !== id));
+      }
+    } catch (error) {
+      console.error('Error deleting todo:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        await fetch('http://localhost:5000/api/users/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      logout(); // Use auth context logout
+    }
   };
 
   // Get completion stats
@@ -294,7 +328,7 @@ function MainPage() {
                       />
                     </td>
                     <td className="px-6 py-4">
-                      {editingId === todo.id ? (
+                      {editingId === todo._id ? (
                         <input
                           type="text"
                           value={editText}
@@ -318,10 +352,10 @@ function MainPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
-                      {editingId === todo.id ? (
+                      {editingId === todo._id ? (
                         <>
                           <button
-                            onClick={() => handleUpdate(todo.id)}
+                            onClick={() => handleUpdate(todo._id)}
                             className="px-3 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors duration-150"
                           >
                             Save
@@ -342,7 +376,7 @@ function MainPage() {
                             Edit
                           </button>
                           <button
-                            onClick={() => handleDelete(todo.id)}
+                            onClick={() => handleDelete(todo._id)}
                             className="px-3 py-1 text-xs font-medium text-red-700 bg-red-50 rounded-md hover:bg-red-100 transition-colors duration-150"
                           >
                             Delete

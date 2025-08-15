@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { EnvelopeIcon, LockClosedIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
 
-function Login({ onLogin }) {
+function Login() {
+  const { login } = useAuth();
   const navigate = useNavigate();
   const [credentials, setCredentials] = useState({
     email: '',
@@ -31,13 +33,9 @@ function Login({ onLogin }) {
         throw new Error(data.message || 'Login failed');
       }
 
-      // Store the token if your API returns one
       if (data.token) {
-        localStorage.setItem('token', data.token);
+        login(data.token); // Use auth context login
       }
-
-      onLogin(credentials);
-      navigate('/MainPage');
     } catch (err) {
       console.error('Login error:', err);
       setError(err.message || 'Failed to login. Please try again.');
